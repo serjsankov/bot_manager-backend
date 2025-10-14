@@ -1,6 +1,8 @@
 import os, hmac, hashlib, urllib.parse, json
 from fastapi import Header, HTTPException
 from config import BOT_TOKEN
+import urllib.parse, json
+from datetime import datetime
 
 def parse_init_data(init_data: str) -> dict:
     params = dict(urllib.parse.parse_qsl(init_data, keep_blank_values=True))
@@ -30,4 +32,15 @@ async def telegram_user(x_demo_user: str = Header(None), x_init_data: str = Head
         return {"id": 111111, "username": "serj_test1", "tg_id": 121212122, "full_name": "Сергей Иванович", "role": "директор", "department": "Frontend", "is_demo": True}
     if not x_init_data:
         raise HTTPException(status_code=401, detail="Unauthorized")
+    
+    query = dict(urllib.parse.parse_qsl(x_init_data))
+    user_info = json.loads(query.get("user", "{}"))
+
+    # вернём словарь пользователя
+    return {
+        "id": user_info.get("id"),
+        "username": user_info.get("username"),
+        "full_name": f'{user_info.get("first_name","")} {user_info.get("last_name","")}'.strip(),
+        "is_demo": False
+    }
     # остальной код проверки Telegram initData
