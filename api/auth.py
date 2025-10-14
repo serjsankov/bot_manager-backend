@@ -40,6 +40,7 @@ async def telegram_user(x_demo_user: str = Header(None), x_init_data: str = Head
     return {
         "id": user_info.get("id"),
         "username": user_info.get("username"),
+        "tg_id": user_info.get("id"),
         "full_name": f'{user_info.get("first_name","")} {user_info.get("last_name","")}'.strip(),
         "is_demo": False
     }
