@@ -31,7 +31,7 @@ async def add_chat(data: dict, request: Request, user=Depends(telegram_user), db
     
     # 3️⃣ Добавляем чат
     await db.execute(
-        "INSERT INTO chats (value, group_id, link) VALUES (%s, %s)",
+        "INSERT INTO chats (value, group_id, link) VALUES (%s, %s, %s)",
         (value, group_id, link)
     )
 
