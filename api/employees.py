@@ -83,7 +83,7 @@ async def detail_employee(request: Request, user=Depends(telegram_user), db=Depe
     }
     return user
 
-@router.post("/edit")
+@router.post("/edit/")
 async def change_employee(request: Request, user=Depends(telegram_user), db=Depends(get_db_conn)):
     data = await request.json()
     emp_id = data.pop("id", None)
