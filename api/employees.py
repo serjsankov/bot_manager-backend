@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, Header, Request
 from db.db import get_db_conn
 from .auth import telegram_user
-from services.telegram import add_user_to_chat, notify_user_about_group, notify_user_about_removal, notify_user_approved
+from services.telegram import add_user_to_chat, notify_user_about_group, notify_user_about_removal, notify_user_approved, check_bot_in_chat
 router = APIRouter()
 
 # Простая проверка пользователя: Telegram или Demo
@@ -159,7 +159,6 @@ async def change_employee(request: Request, user=Depends(telegram_user), db=Depe
                     print(f"⚠ Не удалось уведомить {tg_id} о чате {name}: {e}")
             # Бота проверяем и добавляем, если нужно
             try:
-                from backend.services.telegram import check_bot_in_chat
                 bot_in_chat = await check_bot_in_chat(group_id)
                 if not bot_in_chat:
                     print(f"⚠ Бот не имеет доступа к чату {group_id}")
