@@ -92,8 +92,15 @@ async def register_user(user: UserRegister, db=Depends(get_db_conn)):
     await db.execute("SELECT tg_id FROM users_managers WHERE full_name=%s", (user.manager))
     manager = await db.fetchone()
 
+    await db.execute("SELECT tg_id FROM users_managers WHERE role=%s", ("директор"))
+    director = await db.fetchone()
+
+    if director:
+        await notify_manager(director["tg_id"], user.full_name, user.role, user.department)
+
     if manager and manager["tg_id"]:
         await notify_manager(manager["tg_id"], user.full_name, user.role, user.department)
+
 
     return {"msg": "Пользователь зарегистрирован", "user_id": user_id}
 
