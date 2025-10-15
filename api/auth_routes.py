@@ -10,7 +10,7 @@ async def whoami(user=Depends(telegram_user), db=Depends(get_db_conn)):
         return {**user, "is_new": False}
 
     await db.execute(
-        "SELECT id, username, role, tg_id, status FROM users_managers WHERE tg_id=%s",
+        "SELECT id, username, role, tg_id, phone, phone_manager status FROM users_managers WHERE tg_id=%s",
         (user["tg_id"],),
     )
     user_data = await db.fetchone()
