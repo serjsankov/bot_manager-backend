@@ -34,11 +34,11 @@ async def register_user(user: UserRegister, db=Depends(get_db_conn)):
         raise HTTPException(400, detail="Пользователь с таким username уже существует")
 
     # Проверка руководителя, если пользователь не руководитель
-    if user.role != "Руководитель":
+    if (user.role or "").lower() != "руководитель":
         await db.execute(
             """
             SELECT id FROM users_managers 
-            WHERE phone = %s AND role = 'руководитель'
+            WHERE phone = %s AND role = 'руководитель' AND status = 'approved'
             """,
             (user.phone_manager,)
         )
@@ -46,11 +46,11 @@ async def register_user(user: UserRegister, db=Depends(get_db_conn)):
         if not manager:
             raise HTTPException(
                 status_code=400,
-                detail="Руководитель с таким номером не найден"
+                detail="Руководитель с таким номером не найден или ещё не подтверждён"
             )
 
     # Проверка директора, если пользователь руководитель
-    if user.role == "руководитель":
+    if (user.role or "").lower() == "руководитель":
         await db.execute(
             """
             SELECT id FROM users_managers 
