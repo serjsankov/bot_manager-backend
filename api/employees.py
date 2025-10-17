@@ -29,11 +29,45 @@ async def list_employees(user=Depends(telegram_user), db=Depends(get_db_conn)):
     rows = await db.fetchall()                   # ⚡ fetchall
     return rows                                  # DictCursor уже возвращает словари
 
+# @router.get("/department")
+# async def list_employees_department(user=Depends(telegram_user), db=Depends(get_db_conn)):
+#     await db.execute("SELECT * FROM users_managers WHERE manager=%s", (user['full_name'],))
+#     users = await db.fetchall()
+#     return users
+
 @router.get("/department")
-async def list_employees_department(user=Depends(telegram_user), db=Depends(get_db_conn)):
-    await db.execute("SELECT * FROM users_managers WHERE manager=%s", (user['full_name'],))
+async def list_employees_department(
+    user=Depends(telegram_user),
+    db=Depends(get_db_conn)
+):
+    # Ищем пользователя
+    await db.execute(
+        "SELECT * FROM users_managers WHERE username = %s",
+        (user["username"],)
+    )
     users = await db.fetchall()
-    return users
+
+    if not users:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    current_user = users[0]  # Берём первую запись
+
+    if current_user["role"] == "директор":
+        await db.execute(
+            "SELECT * FROM users_managers WHERE role NOT IN (%s)",
+            ("директор",)
+        )
+        return await db.fetchall()
+
+    elif current_user["role"] == "Руководитель":
+        await db.execute(
+            "SELECT * FROM users_managers WHERE phone_manager = %s",
+            (current_user["phone"],)
+        )
+        return await db.fetchall()
+
+    else:
+        raise HTTPException(status_code=403, detail="Access denied")
 
 @router.get("/managers")
 async def list_employees_manager(user=Depends(telegram_user), db=Depends(get_db_conn)):
