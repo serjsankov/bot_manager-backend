@@ -253,7 +253,7 @@ async def change_employee(request: Request, user=Depends(telegram_user), db=Depe
         "chats": user_chats
     }
 
-@router.post('/delete')
+@router.post('/delete/')
 async def delete_user(request: Request, user=Depends(telegram_user), db=Depends(get_db_conn)):
     data = await request.json()
     emp_id = data.pop("id", None)
