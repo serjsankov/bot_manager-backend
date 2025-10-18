@@ -29,7 +29,7 @@ def verify_init_data(init_data: str) -> dict:
 
 async def telegram_user(x_demo_user: str = Header(None), x_init_data: str = Header(None)):
     if x_demo_user:
-        return {"id": 1111112, "username": "serj_sankov", "tg_id": 1212121223, "full_name": "Сергей Иванович", "is_demo": True}
+        return {"id": 69, "username": "it_sir_top", "department": "Контекст", "tg_id": 11791741033, "role": "Руководитель", "status": "approved", "phone": "79000000002", "full_name": "Саньков Сергей Иванович", "is_demo": True}
     if not x_init_data:
         raise HTTPException(status_code=401, detail="Unauthorized")
     
