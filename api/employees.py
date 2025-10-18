@@ -48,7 +48,8 @@ async def list_employees_department(
     users = await db.fetchall()
 
     if not users:
-        raise HTTPException(status_code=404, detail="User not found")
+        # raise HTTPException(status_code=404, detail="User not found")
+        return []
 
     current_user = users[0]  # Берём первую запись
 
