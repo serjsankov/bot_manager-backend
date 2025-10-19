@@ -7,7 +7,7 @@ router = APIRouter()
 @router.get("/whoami")
 async def whoami(user=Depends(telegram_user), db=Depends(get_db_conn)):
     if user.get("is_demo"):
-        return {**user, "is_new": False}
+        return {**user, "is_new": True}
 
     await db.execute(
         "SELECT id, username, role, tg_id, phone, phone_manager, status FROM users_managers WHERE tg_id=%s",
