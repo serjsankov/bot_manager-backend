@@ -22,7 +22,7 @@ async def whoami(user=Depends(telegram_user), db=Depends(get_db_conn)):
             "username": user.get("username"),
             "tg_id": user.get("tg_id"),
             "role": None,
-            "is_new": False,
+            "is_new": True,
         }
 
     user_data["is_new"] = False
