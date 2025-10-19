@@ -264,6 +264,6 @@ async def delete_user(request: Request, user=Depends(telegram_user), db=Depends(
     await db.execute("DELETE FROM users_managers WHERE id=%s", (emp_id,))
 
     # return {"status": "ok", "deleted_id": emp_id}
-    await db.execute("SELECT * FROM users_managers WHERE phone_manager=%s", (user['phone'],))
+    await db.execute("SELECT * FROM users_managers")
     users = await db.fetchall()
     return users
