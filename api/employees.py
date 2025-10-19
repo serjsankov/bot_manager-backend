@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, Header, Request
 from db.db import get_db_conn
 from .auth import telegram_user
-from services.telegram import add_user_to_chat, notify_user_about_group, notify_user_about_removal, notify_user_approved, check_bot_in_chat
+from services.telegram import add_user_to_chat, notify_user_about_group, notify_user_about_removal, notify_user_approved, check_bot_in_chat, remove_user_from_chat, notify_manager_fired
 router = APIRouter()
 
 # Простая проверка пользователя: Telegram или Demo
@@ -253,17 +253,83 @@ async def change_employee(request: Request, user=Depends(telegram_user), db=Depe
         "chats": user_chats
     }
 
+
 @router.post('/delete/')
 async def delete_user(request: Request, user=Depends(telegram_user), db=Depends(get_db_conn)):
     data = await request.json()
-    emp_id = data.pop("id", None)
+    emp_id = data.get("id")
 
     if not emp_id:
         return {"error": "id is required"}
 
+    # 1. Получаем пользователя
+    await db.execute("SELECT * FROM users_managers WHERE id=%s", (emp_id,))
+    user_row = await db.fetchone()
+    if not user_row:
+        return {"error": f"User with id {emp_id} not found"}
+
+    tg_id = user_row.get("tg_id")
+    full_name = user_row.get("full_name")
+    role = user_row.get("role")
+    department = user_row.get("department")
+
+    if not tg_id:
+        print("⚠ Пользователь не привязан к Telegram, пропуск удаления из TG")
+        tg_id = None
+
+    # 2. Берём все реальные group_id из таблицы chats через JOIN
+    await db.execute("""
+        SELECT c.group_id, c.value
+        FROM user_chats uc
+        JOIN chats c ON uc.chat_id = c.id
+        WHERE uc.user_id = %s
+    """, (emp_id,))
+    chat_rows = await db.fetchall()
+
+    # 3. Удаляем из Telegram чатов
+    if tg_id:
+        for chat in chat_rows:
+            group_id = chat["group_id"]
+            group_name = chat["value"]
+
+            if not group_id:
+                print(f"⚠ У чата {group_name} нет group_id — пропускаем")
+                continue
+
+            try:
+                await remove_user_from_chat(int(group_id), int(tg_id))
+                await notify_user_about_removal(tg_id, group_name)
+                await notify_manager_fired(
+                    user["tg_id"],
+                    full_name,   # имя уволенного сотрудника
+                    role,
+                    department
+                )
+                print(f"✅ Удалён {tg_id} из TG-чата {group_name} ({group_id})")
+            except Exception as e:
+                print(f"❌ Ошибка удаления {tg_id} из чата {group_id}: {e}")
+
+        # --- Получаем всех директоров и уведомляем ---
+    await db.execute("SELECT tg_id, full_name, department, role FROM users_managers WHERE role='директор' AND tg_id IS NOT NULL")
+    directors = await db.fetchall()
+    for director in directors:
+        try:
+            await notify_manager_fired(
+                director["tg_id"],
+                full_name,   # имя уволенного сотрудника
+                role,
+                department
+            )
+            print(f"Директор {director['full_name']} уведомлен об увольнении {full_name}")
+        except Exception as e:
+            print(f"Не удалось уведомить директора {director['full_name']}: {e}")
+
+    # 4. Удаляем связи в БД
+    await db.execute("DELETE FROM user_chats WHERE user_id=%s", (emp_id,))
     await db.execute("DELETE FROM users_managers WHERE id=%s", (emp_id,))
 
-    # return {"status": "ok", "deleted_id": emp_id}
+    # await db.commit()
+
+    # 5. Возвращаем обновлённый список
     await db.execute("SELECT * FROM users_managers")
-    users = await db.fetchall()
-    return users
+    return await db.fetchall()

@@ -67,6 +67,28 @@ async def notify_user_about_removal(user_id: int, group_name: str):
     except Exception as e:
         print(f"⚠️ Не удалось отправить уведомление об удалении пользователю {user_id}: {e}")
 
+# async def send_message_manager_remove(user_id: int, user_name: str):
+#     try:
+#         await bot.send_message(int(user_id), f"Пользователь {user_name} уволен и удалён из чатов")
+#     except Exception as e:
+#         print(f"⚠️ Не удалось отправить уведомление об удалении пользователю {user_id}: {e}")
+async def notify_manager_fired(tg_id: int, full_name: str, role: str, department: str):
+    """
+    Уведомляет директора о том, что сотрудник уволен
+    """
+    text = (
+        f"⚠ Сотрудник уволен:\n"
+        f"ФИО: {full_name}\n"
+        f"Должность: {role}\n"
+        f"Отдел: {department}"
+    )
+    try:
+        await bot.send_message(chat_id=tg_id, text=text)
+        print(f"✅ Уведомление директору {tg_id} отправлено")
+    except Exception as e:
+        print(f"❌ Ошибка отправки уведомления директору {tg_id}: {e}")
+        
+
 async def add_user_to_chat(tg_id: int, group_id: int, group_link: str, group_name: str):
     """
     Пытаемся добавить пользователя в Telegram-группу по group_id.

@@ -29,7 +29,25 @@ def verify_init_data(init_data: str) -> dict:
 
 async def telegram_user(x_demo_user: str = Header(None), x_init_data: str = Header(None)):
     if x_demo_user:
-        return {"id": 1111112, "username": "serj_sankovTest", "tg_id": 1212121223, "full_name": "Сергей Иванович", "is_demo": True}
+        return {
+        # "id": 999999,
+        # "created_at": "2025-10-18 14:33:46",
+        # "gender": "man",
+        # "phone_director": "79000000000",
+        # "director": "Алла",
+        # "phone_manager": "79000000007",
+        # "manager": "Сергей",
+        # "department": "IT",
+        # "role": "руководитель",
+        # "birth_date": "1995-10-17",
+        "phone": "79000000003",
+        "role": "руководитель",
+        "full_name": "Сергей",
+        "username": "serj_sankov",
+        "tg_id": 704861909,
+        "status": "approved",
+        "is_demo": True
+        }
     if not x_init_data:
         raise HTTPException(status_code=401, detail="Unauthorized")
     
@@ -42,6 +60,6 @@ async def telegram_user(x_demo_user: str = Header(None), x_init_data: str = Head
         "username": user_info.get("username"),
         "tg_id": user_info.get("id"),
         "full_name": f'{user_info.get("first_name","")} {user_info.get("last_name","")}'.strip(),
-        "is_demo": False
+        "is_demo": True
     }
     # остальной код проверки Telegram initData
