@@ -1,5 +1,6 @@
 import os, hmac, hashlib, urllib.parse, json
-from fastapi import Header, HTTPException
+from fastapi import Header, HTTPException, Depends
+from db.db import get_db_conn
 from config import BOT_TOKEN
 import urllib.parse, json
 from datetime import datetime
@@ -27,7 +28,7 @@ def verify_init_data(init_data: str) -> dict:
         raise HTTPException(status_code=401, detail="Bad init data")
     return parse_init_data(init_data)
 
-async def telegram_user(x_demo_user: str = Header(None), x_init_data: str = Header(None)):
+async def telegram_user(x_demo_user: str = Header(None), x_init_data: str = Header(None), db=Depends(get_db_conn)):
     if x_demo_user:
         return {
         # "id": 999999,
@@ -51,15 +52,51 @@ async def telegram_user(x_demo_user: str = Header(None), x_init_data: str = Head
     if not x_init_data:
         raise HTTPException(status_code=401, detail="Unauthorized")
     
+
+    # 3️⃣ Парсим initData от Telegram
     query = dict(urllib.parse.parse_qsl(x_init_data))
     user_info = json.loads(query.get("user", "{}"))
+    tg_id = user_info.get("id")
 
-    # вернём словарь пользователя
+    # 4️⃣ Ищем пользователя в базе
+    await db.execute("SELECT * FROM users_managers WHERE tg_id=%s", (tg_id,))
+    db_user = await db.fetchone()
+
+    if db_user:
+        # Пользователь есть в БД
+        status = db_user.get("status", "pending")
+        role = db_user.get("role")
+        full_name = db_user.get("full_name")
+        username = db_user.get("username")
+        phone = db_user.get("phone")
+    else:
+        # Новый пользователь — ещё не зарегистрирован
+        status = "pending"
+        role = None
+        full_name = f'{user_info.get("first_name","")} {user_info.get("last_name","")}'.strip()
+        username = user_info.get("username")
+        phone = None
+
     return {
-        "id": user_info.get("id"),
-        "username": user_info.get("username"),
-        "tg_id": user_info.get("id"),
-        "full_name": f'{user_info.get("first_name","")} {user_info.get("last_name","")}'.strip(),
-        "is_demo": True
+        "id": tg_id,
+        "username": username,
+        "tg_id": tg_id,
+        "full_name": full_name,
+        "role": role,
+        "status": status,
+        "phone": phone,
+        "is_demo": False
     }
+    
+    # query = dict(urllib.parse.parse_qsl(x_init_data))
+    # user_info = json.loads(query.get("user", "{}"))
+
+    # # вернём словарь пользователя
+    # return {
+    #     "id": user_info.get("id"),
+    #     "username": user_info.get("username"),
+    #     "tg_id": user_info.get("id"),
+    #     "full_name": f'{user_info.get("first_name","")} {user_info.get("last_name","")}'.strip(),
+    #     "is_demo": True
+    # }
     # остальной код проверки Telegram initData
