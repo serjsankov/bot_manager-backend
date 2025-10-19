@@ -1,6 +1,7 @@
 from aiogram import Bot, Dispatcher, types
 from aiogram.filters import Command
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, WebAppInfo
+from db.chats import add_chat_to_db
 import asyncio
 from config import BOT_TOKEN, FRONTEND_URLS
 
@@ -46,6 +47,9 @@ async def handle_group_message(msg: types.Message):
             f"🆔 ID чата: {chat_id}\n"
             f"🔗 Ссылка на чат: {chat_link}"
         )
+
+         # Добавляем чат в БД
+        await add_chat_to_db(group_id=chat_id, value=chat_name, link=chat_link)
 
         try:
             # Отправляем личное сообщение пользователю

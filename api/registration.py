@@ -37,7 +37,7 @@ async def register_user(user: UserRegister, db=Depends(get_db_conn)):
     if (user.role or "").lower() != "руководитель":
         await db.execute(
             """
-            SELECT id FROM users_managers 
+            SELECT id, phone FROM users_managers 
             WHERE phone = %s AND role = 'руководитель' AND status = 'approved'
             """,
             (user.phone_manager,)
@@ -46,7 +46,12 @@ async def register_user(user: UserRegister, db=Depends(get_db_conn)):
         if not manager:
             raise HTTPException(
                 status_code=400,
-                detail="Руководитель с таким номером не найден или ещё не подтверждён"
+                detail="Руководитель с таким номером не найден или ещё не подтверждён."
+            )
+        if manager["phone"] == user.phone:
+            raise HTTPException(
+                status_code=400,
+                detail="Ваш номер не прошёл валидацию."
             )
 
     # Проверка директора, если пользователь руководитель

@@ -47,6 +47,7 @@ async def telegram_user(x_demo_user: str = Header(None), x_init_data: str = Head
         "username": "serj_sankov",
         "tg_id": 704861909,
         "status": "approved",
+        "department": "IT",
         "is_demo": True
         }
     if not x_init_data:
