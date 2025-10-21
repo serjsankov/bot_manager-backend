@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, Header, Request
 from db.db import get_db_conn
 from .auth import telegram_user
-from services.telegram import add_user_to_chat, notify_user_about_group, notify_user_about_removal, notify_user_approved, check_bot_in_chat, remove_user_from_chat, notify_manager_fired
+from services.telegram import send_message_editing, notify_user_about_group, notify_user_about_removal, notify_user_approved, check_bot_in_chat, remove_user_from_chat, notify_manager_fired
 router = APIRouter()
 
 # Простая проверка пользователя: Telegram или Demo
@@ -297,6 +297,56 @@ async def change_employee(request: Request, user=Depends(telegram_user), db=Depe
 
     # Словарь или список с названиями чатов
     user_chats = [{"id": row["chat_id"], "name": row["chat_name"]} for row in chat_rows]
+
+    # --- 4.1. Уведомления о редактировании пользователя ---
+    await db.execute("SELECT tg_id, role, phone_manager, full_name, phone, birth_date FROM users_managers WHERE id=%s",
+                     (emp_id,))
+    user_row = await db.fetchone()
+    user_tg_id = user_row.get("tg_id") if user_row else None
+    user_role = user_row.get("role") if user_row else None
+    user_manager_phone = user_row.get("phone_manager") if user_row else None
+    user_full_name = user_row.get("full_name") if user_row else ""
+    user_phone = user_row.get("phone") if user_row else ""
+    user_birth_date = user_row.get("birth_date") if user_row else ""
+
+    recipients = set()
+
+    # 1. Уведомляем самого пользователя
+    if user_tg_id:
+        recipients.add(user_tg_id)
+
+    # 2. Если пользователь не руководитель, уведомляем его менеджера
+    if user_role and user_role.lower() != "руководитель" and user_manager_phone:
+        await db.execute("SELECT tg_id FROM users_managers WHERE phone=%s", (user_manager_phone,))
+        mgr_row = await db.fetchone()
+        if mgr_row and mgr_row.get("tg_id"):
+            recipients.add(mgr_row.get("tg_id"))
+
+    # 3. Уведомляем всех директоров
+    await db.execute("SELECT tg_id FROM users_managers WHERE LOWER(role)='директор'")
+    directors = await db.fetchall()
+    for dir_row in directors:
+        if dir_row.get("tg_id"):
+            recipients.add(dir_row.get("tg_id"))
+
+    # --- Отправляем уведомления с данными ---
+    for tg_id in recipients:
+        try:
+            text = (
+                f"Данные пользователя обновлены:\n"
+                f"ФИО: {user_full_name}\n"
+                f"Телефон: {user_phone}\n"
+                f"Дата рождения: {user_birth_date}"
+            )
+            await send_message_editing(
+                user_tg_id=user_tg_id,
+                full_name=user_full_name,
+                phone=user_phone,
+                birth_date=user_birth_date
+            )
+            print(f"Уведомление отправлено {tg_id}")
+        except Exception as e:
+            print(f"⚠ Не удалось уведомить {tg_id}: {e}")
 
     return {
         "updated_row": updated_row,
