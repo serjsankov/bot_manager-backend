@@ -99,7 +99,7 @@ async def detail_employee(request: Request, user=Depends(telegram_user), db=Depe
     # data_user = await db.fetchall()
     # return data_user
     await db.execute("""
-    SELECT u.id, u.full_name, u.phone, u.role, u.phone_manager, u.status, uc.chat_id
+    SELECT u.id, u.full_name, u.phone, u.role, u.phone_manager, u.birth_date, u.status, uc.chat_id
     FROM users_managers u
     LEFT JOIN user_chats uc ON u.id = uc.user_id
     WHERE u.id = %s
@@ -112,11 +112,63 @@ async def detail_employee(request: Request, user=Depends(telegram_user), db=Depe
         "full_name": rows[0]["full_name"],
         "phone": rows[0]["phone"],
         "role": rows[0]["role"],
-        "phone_manager": rows[0]["phone_manager"],
+        "birth_date": rows[0]["birth_date"],
+        # "phone_manager": rows[0]["phone_manager"],
         "status": rows[0]["status"],
         "chats": [r["chat_id"] for r in rows if r["chat_id"] is not None]
     }
     return user
+
+@router.post("/user/")
+async def edit_user_data(request: Request, user=Depends(telegram_user), db=Depends(get_db_conn)):
+    data = await request.json()
+    emp_id = data.pop("id", None)
+    if not emp_id:
+        return {"error": "id is required"}
+
+    # --- 1. Получаем пользователя ---
+    await db.execute("SELECT * FROM users_managers WHERE id=%s", (emp_id,))
+    user_data = await db.fetchone()
+    if not user_data:
+        return {"error": "user not found"}
+
+    old_phone = user_data["phone"]
+    new_phone = data.get("phone")
+    role = user_data["role"].lower()
+
+    # --- 2. Проверяем, изменился ли телефон ---
+    relation_field = None
+    if role == "директор":
+        relation_field = "phone_director"
+    elif role == "руководитель":
+        relation_field = "phone_manager"
+
+    if new_phone and new_phone != old_phone:
+        # Обновляем телефон у подчинённых, если нужно
+        if relation_field:
+            query = f"""
+                UPDATE users_managers
+                SET {relation_field}=%s
+                WHERE {relation_field}=%s
+            """
+            await db.execute(query, (new_phone, old_phone))
+
+    # --- 3. Обновляем все остальные поля пользователя ---
+    fields = []
+    values = []
+    for key, value in data.items():
+        if key != "id":
+            fields.append(f"{key} = %s")
+            values.append(value)
+
+    if fields:
+        query = f"UPDATE users_managers SET {', '.join(fields)} WHERE id = %s"
+        values.append(emp_id)
+        await db.execute(query, values)
+
+    # --- 4. Возвращаем обновлённые данные пользователя ---
+    await db.execute("SELECT * FROM users_managers WHERE id=%s", (emp_id,))
+    return await db.fetchone()
 
 @router.post("/edit/")
 async def change_employee(request: Request, user=Depends(telegram_user), db=Depends(get_db_conn)):
@@ -124,7 +176,7 @@ async def change_employee(request: Request, user=Depends(telegram_user), db=Depe
     emp_id = data.pop("id", None)
     if not emp_id:
         return {"error": "id is required"}
-    
+
     # --- Проверяем статус из тела запроса ---
     status = data.get("status")
 
@@ -224,7 +276,7 @@ async def change_employee(request: Request, user=Depends(telegram_user), db=Depe
 
     # --- 3. Возвращаем обновлённого пользователя и сотрудников ---
     await db.execute(
-        "SELECT id, full_name, phone, role, phone_manager, status FROM users_managers WHERE id=%s",
+        "SELECT id, full_name, phone, role, phone_manager, status, birth_date, FROM users_managers WHERE id=%s",
         (emp_id,)
     )
     updated_row = await db.fetchone()
@@ -252,7 +304,6 @@ async def change_employee(request: Request, user=Depends(telegram_user), db=Depe
         "chat_ids": user_chat_ids,
         "chats": user_chats
     }
-
 
 @router.post('/delete/')
 async def delete_user(request: Request, user=Depends(telegram_user), db=Depends(get_db_conn)):

@@ -41,6 +41,7 @@ async def telegram_user(x_demo_user: str = Header(None), x_init_data: str = Head
         # "department": "IT",
         # "role": "руководитель",
         # "birth_date": "1995-10-17",
+        "birth_date": "2003-10-19",
         "phone": "79000000003",
         "role": "руководитель",
         "full_name": "Сергей",
