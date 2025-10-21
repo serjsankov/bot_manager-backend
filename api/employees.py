@@ -276,7 +276,7 @@ async def change_employee(request: Request, user=Depends(telegram_user), db=Depe
 
     # --- 3. Возвращаем обновлённого пользователя и сотрудников ---
     await db.execute(
-        "SELECT id, full_name, phone, role, phone_manager, status, birth_date, FROM users_managers WHERE id=%s",
+        "SELECT id, full_name, phone, role, phone_manager, status, birth_date FROM users_managers WHERE id=%s",
         (emp_id,)
     )
     updated_row = await db.fetchone()
