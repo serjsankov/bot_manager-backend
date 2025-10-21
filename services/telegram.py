@@ -142,15 +142,15 @@ async def notify_user_approved(tg_id: int):
 async def send_message_editing(user_tg_id: int, full_name: str, phone: str, birth_date: str, role: str, department: str, chats: list):
     try:
         text = (
-            f"Данные пользователя обновлены:\n"
-            f"ФИО: {full_name}\n"
-            f"Телефон: {phone}\n"
-            f"Дата рождения: {birth_date}\n"
-            f"Должность: {role}\n"
-            f"Отдел: {department}\n"
-            f"Чаты: {', '.join(chats) if chats else 'нет'}"
+            f"<b>Данные пользователя обновлены:</b>\n"
+            f"<b>ФИО:</b> {full_name}\n"
+            f"<b>Телефон:</b> {phone}\n"
+            f"<b>Дата рождения:</b> {birth_date}\n"
+            f"<b>Должность:</b> {role}\n"
+            f"<b>Отдел:</b> {department}\n"
+            f"<b>Чаты:</b> {', '.join(chats) if chats else 'нет'}"
         )
-        await bot.send_message(user_tg_id, text)
+        await bot.send_message(user_tg_id, text, parse_mode="HTML")
         print(f"Уведомление отправлено {user_tg_id}")
     except Exception as e:
         print(f"⚠ Не удалось отправить уведомление пользователю {user_tg_id}: {e}")

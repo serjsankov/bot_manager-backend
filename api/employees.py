@@ -62,7 +62,7 @@ async def list_employees_department(
 
     elif current_user["role"] == "Руководитель":
         await db.execute(
-            "SELECT * FROM users_managers WHERE phone_manager = %s",
+            "SELECT * FROM users_managers WHERE phone_manager = %s AND role != 'Руководитель'",
             (current_user["phone"],)
         )
         return await db.fetchall()
@@ -345,15 +345,6 @@ async def change_employee(request: Request, user=Depends(telegram_user), db=Depe
     # --- Отправляем уведомления с данными ---
     for tg_id in recipients:
         try:
-            text = (
-                f"Данные пользователя обновлены:\n"
-                f"ФИО: {user_full_name}\n"
-                f"Телефон: {user_phone}\n"
-                f"Дата рождения: {user_birth_date}\n"
-                f"Должность: {user_role}\n"
-                f"Отдел: {user_department}\n"
-                f"Чаты: {', '.join(chat_names) if chat_names else 'нет'}"
-            )
             await send_message_editing(
                 user_tg_id=tg_id,  # исправлено на текущего получателя
                 full_name=user_full_name,

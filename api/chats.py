@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, Request, HTTPException
 from db.db import get_db_conn
 from .auth import telegram_user
-from services.telegram import check_bot_in_chat, update_chat_title, notify_user_about_group, notify_user_about_removal
+from services.telegram import check_bot_in_chat, update_chat_title, notify_user_about_group, notify_user_about_removal, remove_user_from_chat
 
 router = APIRouter()
 
@@ -111,7 +111,7 @@ async def all_data_role( request: Request, data: dict, user=Depends(telegram_use
         "employees": employees,
     }
 
-@router.post("/edit")
+@router.post("/edit/")
 async def change_role(request: Request, data: dict, user=Depends(telegram_user), db=Depends(get_db_conn)):
     chat_id = data.get("id")  # внутренний id таблицы chats
     new_value = data.get("value")  # новое имя группы
@@ -183,7 +183,7 @@ async def change_role(request: Request, data: dict, user=Depends(telegram_user),
             else:
                 print(f"⚠ У пользователя нет telegram_id, пропускаю: {u}")
 
-    # --- 8. Оповещаем удалённых пользователей
+    # --- 8. Оповещаем и исключаем удалённых пользователей
     if to_remove:
         await db.execute("SELECT tg_id FROM users_managers WHERE id IN %s", (tuple(to_remove),))
         tg_users_removed = await db.fetchall()
@@ -192,9 +192,14 @@ async def change_role(request: Request, data: dict, user=Depends(telegram_user),
             tg_id = u["tg_id"]
             if tg_id:
                 try:
+                    # 🧹 Удаляем пользователя из Telegram-группы
+                    await remove_user_from_chat(group_id, tg_id)
+
+                    # 📨 Отправляем уведомление об удалении
                     await notify_user_about_removal(tg_id, new_value)
+
                 except Exception as e:
-                    print(f"⚠ Не удалось отправить уведомление об удалении пользователю {tg_id}: {e}")
+                    print(f"⚠ Не удалось удалить {tg_id} из Telegram-группы {group_id}: {e}")
             else:
                 print(f"⚠ У удалённого пользователя нет telegram_id, пропускаю: {u}")
 

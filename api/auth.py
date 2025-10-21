@@ -59,12 +59,23 @@ async def telegram_user(x_demo_user: str = Header(None), x_init_data: str = Head
     query = dict(urllib.parse.parse_qsl(x_init_data))
     user_info = json.loads(query.get("user", "{}"))
     tg_id = user_info.get("id")
+    username = user_info.get("username")
 
     # 4️⃣ Ищем пользователя в базе
     await db.execute("SELECT * FROM users_managers WHERE tg_id=%s", (tg_id,))
     db_user = await db.fetchone()
 
     if db_user:
+        db_username = db_user.get("username")
+
+        # Если username изменился — обновляем
+        if username and username != db_username:
+            await db.execute(
+                "UPDATE users_managers SET username=%s WHERE tg_id=%s",
+                (username, tg_id)
+            )
+            print(f"🔄 Username обновлён для tg_id={tg_id}: {db_username} → {username}")
+
         # Пользователь есть в БД
         status = db_user.get("status", "pending")
         role = db_user.get("role")
