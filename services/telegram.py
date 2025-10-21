@@ -139,17 +139,16 @@ async def notify_user_approved(tg_id: int):
     except Exception as e:
         print(f"⚠ Не удалось отправить уведомление пользователю {tg_id}: {e}")
 
-async def send_message_editing(user_tg_id: int, full_name: str, phone: str, birth_date: str):
-    """
-    Отправляет пользователю сообщение о том, что его данные изменены,
-    включая ФИО, телефон и дату рождения.
-    """
+async def send_message_editing(user_tg_id: int, full_name: str, phone: str, birth_date: str, role: str, department: str, chats: list):
     try:
         text = (
             f"Данные пользователя обновлены:\n"
             f"ФИО: {full_name}\n"
             f"Телефон: {phone}\n"
-            f"Дата рождения: {birth_date}"
+            f"Дата рождения: {birth_date}\n"
+            f"Должность: {role}\n"
+            f"Отдел: {department}\n"
+            f"Чаты: {', '.join(chats) if chats else 'нет'}"
         )
         await bot.send_message(user_tg_id, text)
         print(f"Уведомление отправлено {user_tg_id}")

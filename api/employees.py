@@ -299,8 +299,10 @@ async def change_employee(request: Request, user=Depends(telegram_user), db=Depe
     user_chats = [{"id": row["chat_id"], "name": row["chat_name"]} for row in chat_rows]
 
     # --- 4.1. Уведомления о редактировании пользователя ---
-    await db.execute("SELECT tg_id, role, phone_manager, full_name, phone, birth_date FROM users_managers WHERE id=%s",
-                     (emp_id,))
+    await db.execute(
+        "SELECT tg_id, role, phone_manager, full_name, phone, birth_date, department FROM users_managers WHERE id=%s",
+        (emp_id,)
+    )
     user_row = await db.fetchone()
     user_tg_id = user_row.get("tg_id") if user_row else None
     user_role = user_row.get("role") if user_row else None
@@ -308,6 +310,17 @@ async def change_employee(request: Request, user=Depends(telegram_user), db=Depe
     user_full_name = user_row.get("full_name") if user_row else ""
     user_phone = user_row.get("phone") if user_row else ""
     user_birth_date = user_row.get("birth_date") if user_row else ""
+    user_department = user_row.get("department") if user_row else ""
+
+    # Получаем список чатов пользователя
+    await db.execute("""
+        SELECT c.value AS chat_name
+        FROM user_chats uc
+        JOIN chats c ON uc.chat_id = c.id
+        WHERE uc.user_id=%s
+    """, (emp_id,))
+    chat_rows = await db.fetchall()
+    chat_names = [row["chat_name"] for row in chat_rows]
 
     recipients = set()
 
@@ -336,13 +349,19 @@ async def change_employee(request: Request, user=Depends(telegram_user), db=Depe
                 f"Данные пользователя обновлены:\n"
                 f"ФИО: {user_full_name}\n"
                 f"Телефон: {user_phone}\n"
-                f"Дата рождения: {user_birth_date}"
+                f"Дата рождения: {user_birth_date}\n"
+                f"Должность: {user_role}\n"
+                f"Отдел: {user_department}\n"
+                f"Чаты: {', '.join(chat_names) if chat_names else 'нет'}"
             )
             await send_message_editing(
-                user_tg_id=user_tg_id,
+                user_tg_id=tg_id,  # исправлено на текущего получателя
                 full_name=user_full_name,
                 phone=user_phone,
-                birth_date=user_birth_date
+                birth_date=user_birth_date,
+                role=user_role,
+                department=user_department,
+                chats=chat_names
             )
             print(f"Уведомление отправлено {tg_id}")
         except Exception as e:
