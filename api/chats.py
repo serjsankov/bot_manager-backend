@@ -67,21 +67,73 @@ async def add_chat(data: dict, request: Request, user=Depends(telegram_user), db
     return rows
 
 
+# @router.post("/delete")
+# async def delete_chat(request: Request, user=Depends(telegram_user), db=Depends(get_db_conn)):
+#     data = await request.json()
+#     chat_id = data.pop("id", None)
+
+#     if not chat_id:
+#         return {"error": "id is required"}
+
+#     await db.execute("DELETE FROM chats WHERE id=%s", (chat_id,))
+
+#     await db.execute("DELETE FROM user_chats WHERE chat_id=%s", (chat_id))
+#     await db.execute("DELETE FROM role_chat WHERE chat_id=%s", (chat_id))
+
+#     await db.execute("SELECT * FROM chats")
+#     chats = await db.fetchall()
+#     return chats
+
 @router.post("/delete")
 async def delete_chat(request: Request, user=Depends(telegram_user), db=Depends(get_db_conn)):
     data = await request.json()
-    chat_id = data.pop("id", None)
+    chat_id = data.get("id")
 
     if not chat_id:
         return {"error": "id is required"}
 
+    # --- 1. Получаем информацию о чате перед удалением ---
+    await db.execute("SELECT value, group_id FROM chats WHERE id=%s", (chat_id,))
+    chat = await db.fetchone()
+
+    if not chat:
+        return {"error": True, "message": "Чат не найден"}
+
+    chat_name = chat["value"]
+    group_id = chat["group_id"]
+
+    # --- 2. Получаем всех пользователей, которые были в этом чате ---
+    await db.execute("""
+        SELECT u.tg_id, u.full_name
+        FROM user_chats uc
+        JOIN users_managers u ON u.id = uc.user_id
+        WHERE uc.chat_id=%s
+    """, (chat_id,))
+    users_in_chat = await db.fetchall()
+
+    # --- 3. Удаляем связи пользователей с этим чатом ---
+    await db.execute("DELETE FROM user_chats WHERE chat_id=%s", (chat_id,))
+    await db.execute("DELETE FROM role_chat WHERE chat_id=%s", (chat_id,))
+
+    # --- 4. Удаляем сам чат ---
     await db.execute("DELETE FROM chats WHERE id=%s", (chat_id,))
 
-    await db.execute("DELETE FROM user_chats WHERE chat_id=%s", (chat_id))
-    await db.execute("DELETE FROM role_chat WHERE chat_id=%s", (chat_id))
+    # --- 5. Уведомляем и удаляем пользователей из Telegram-группы ---
+    for user_data in users_in_chat:
+        tg_id = user_data["tg_id"]
+        full_name = user_data["full_name"]
+        try:
+            # Уведомляем в личку
+            await notify_user_about_removal(tg_id, chat_name)
+            # Удаляем из TG-группы
+            await remove_user_from_chat(group_id, tg_id)
+        except Exception as e:
+            print(f"⚠️ Ошибка при удалении пользователя {tg_id} ({full_name}) из чата {group_id}: {e}")
 
+    # --- 6. Возвращаем обновлённый список чатов ---
     await db.execute("SELECT * FROM chats")
     chats = await db.fetchall()
+
     return chats
 
 @router.post("/data")

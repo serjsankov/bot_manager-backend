@@ -154,3 +154,31 @@ async def send_message_editing(user_tg_id: int, full_name: str, phone: str, birt
         print(f"Уведомление отправлено {user_tg_id}")
     except Exception as e:
         print(f"⚠ Не удалось отправить уведомление пользователю {user_tg_id}: {e}")
+
+async def send_message_new_chat(group_id: int, chat_name: str, link: str, already_exists: bool = False):
+    """
+    Отправляет сообщение в группу:
+    - если чат новый → сообщение об успешном добавлении
+    - если уже есть → сообщение, что чат уже в системе
+    """
+    try:
+        if already_exists:
+            text = (
+                f"⚠️ Этот чат уже зарегистрирован в системе.\n\n"
+                f"🗂 Название: {chat_name}\n"
+                f"🆔 ID: {group_id}\n"
+                f"🔗 {link if link else '—'}"
+            )
+        else:
+            text = (
+                f"✅ Чат успешно добавлен в систему!\n\n"
+                f"🗂 Название: {chat_name}\n"
+                f"🆔 ID: {group_id}\n"
+                f"🔗 {link if link else '—'}"
+            )
+
+        await bot.send_message(chat_id=group_id, text=text)
+        print(f"📨 Сообщение в чат {group_id} отправлено (already_exists={already_exists})")
+
+    except Exception as e:
+        print(f"⚠️ Ошибка при отправке сообщения в чат {group_id}: {e}")

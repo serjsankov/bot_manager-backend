@@ -53,26 +53,44 @@ async def list_employees_department(
 
     current_user = users[0]  # Берём первую запись
 
-    if current_user["role"] == "директор":
+    await db.execute("SELECT is_manager FROM roles WHERE value=%s", (current_user["role"],))
+    role_manager = await db.fetchone()
+    is_manager = bool(role_manager['is_manager']) if role_manager else False
+
+    if current_user["role"] == "директор" or current_user["role"] == "admin":
         await db.execute(
-            "SELECT * FROM users_managers WHERE role NOT IN (%s)",
+            "SELECT * FROM users_managers WHERE LOWER(role) NOT IN (%s)",
             ("директор",)
         )
         return await db.fetchall()
 
-    elif current_user["role"] == "Руководитель":
-        await db.execute(
-            "SELECT * FROM users_managers WHERE phone_manager = %s AND role != 'Руководитель'",
-            (current_user["phone"],)
-        )
+    elif is_manager:
+        await db.execute("""
+            SELECT u.*
+            FROM users_managers u
+            JOIN roles r ON u.role = r.value
+            WHERE u.phone_manager = %s
+            AND r.is_manager = 0
+        """, (current_user["phone"],))
         return await db.fetchall()
 
     else:
         raise HTTPException(status_code=403, detail="Access denied")
 
+# @router.get("/managers")
+# async def list_employees_manager(user=Depends(telegram_user), db=Depends(get_db_conn)):
+#     await db.execute("SELECT * FROM users_managers WHERE LOWER(role)=%s", ('руководитель',))
+#     users = await db.fetchall()
+#     return users
 @router.get("/managers")
 async def list_employees_manager(user=Depends(telegram_user), db=Depends(get_db_conn)):
-    await db.execute("SELECT * FROM users_managers WHERE role=%s", ('руководитель',))
+    # Получаем пользователей, у которых роль помечена как руководящая
+    await db.execute("""
+        SELECT um.* 
+        FROM users_managers um
+        JOIN roles r ON um.role = r.value
+        WHERE r.is_manager = 1
+    """)
     users = await db.fetchall()
     return users
 
@@ -99,7 +117,7 @@ async def detail_employee(request: Request, user=Depends(telegram_user), db=Depe
     # data_user = await db.fetchall()
     # return data_user
     await db.execute("""
-    SELECT u.id, u.full_name, u.phone, u.role, u.phone_manager, u.birth_date, u.status, uc.chat_id
+    SELECT u.id, u.full_name, u.phone, u.role, u.phone_manager, u.birth_date, u.status, u.manager, u.director, u.phone_director, uc.chat_id
     FROM users_managers u
     LEFT JOIN user_chats uc ON u.id = uc.user_id
     WHERE u.id = %s
@@ -113,12 +131,65 @@ async def detail_employee(request: Request, user=Depends(telegram_user), db=Depe
         "phone": rows[0]["phone"],
         "role": rows[0]["role"],
         "birth_date": rows[0]["birth_date"],
-        # "phone_manager": rows[0]["phone_manager"],
+        "phone_manager": rows[0]["phone_manager"],
         "status": rows[0]["status"],
+        "manager": rows[0]["manager"],
+        "director": rows[0]["director"],
+        "phone_director": rows[0]["phone_director"],
         "chats": [r["chat_id"] for r in rows if r["chat_id"] is not None]
     }
     return user
 
+# @router.post("/user/")
+# async def edit_user_data(request: Request, user=Depends(telegram_user), db=Depends(get_db_conn)):
+#     data = await request.json()
+#     emp_id = data.pop("id", None)
+#     if not emp_id:
+#         return {"error": "id is required"}
+
+#     # --- 1. Получаем пользователя ---
+#     await db.execute("SELECT * FROM users_managers WHERE id=%s", (emp_id,))
+#     user_data = await db.fetchone()
+#     if not user_data:
+#         return {"error": "user not found"}
+
+#     old_phone = user_data["phone"]
+#     new_phone = data.get("phone")
+#     role = user_data["role"].lower()
+
+#     # --- 2. Проверяем, изменился ли телефон ---
+#     relation_field = None
+#     if role == "директор":
+#         relation_field = "phone_director"
+#     elif role == "руководитель":
+#         relation_field = "phone_manager"
+
+#     if new_phone and new_phone != old_phone:
+#         # Обновляем телефон у подчинённых, если нужно
+#         if relation_field:
+#             query = f"""
+#                 UPDATE users_managers
+#                 SET {relation_field}=%s
+#                 WHERE {relation_field}=%s
+#             """
+#             await db.execute(query, (new_phone, old_phone))
+
+#     # --- 3. Обновляем все остальные поля пользователя ---
+#     fields = []
+#     values = []
+#     for key, value in data.items():
+#         if key != "id":
+#             fields.append(f"{key} = %s")
+#             values.append(value)
+
+#     if fields:
+#         query = f"UPDATE users_managers SET {', '.join(fields)} WHERE id = %s"
+#         values.append(emp_id)
+#         await db.execute(query, values)
+
+#     # --- 4. Возвращаем обновлённые данные пользователя ---
+#     await db.execute("SELECT * FROM users_managers WHERE id=%s", (emp_id,))
+#     return await db.fetchone()
 @router.post("/user/")
 async def edit_user_data(request: Request, user=Depends(telegram_user), db=Depends(get_db_conn)):
     data = await request.json()
@@ -134,24 +205,50 @@ async def edit_user_data(request: Request, user=Depends(telegram_user), db=Depen
 
     old_phone = user_data["phone"]
     new_phone = data.get("phone")
+
+    old_name = user_data["full_name"]
+    new_name = data.get("full_name")
+
     role = user_data["role"].lower()
 
-    # --- 2. Проверяем, изменился ли телефон ---
-    relation_field = None
-    if role == "директор":
-        relation_field = "phone_director"
-    elif role == "руководитель":
-        relation_field = "phone_manager"
+    await db.execute("SELECT is_manager FROM roles WHERE value=%s", (role,))
+    role_manager = await db.fetchone()
+    is_manager = bool(role_manager['is_manager']) if role_manager else False
 
-    if new_phone and new_phone != old_phone:
-        # Обновляем телефон у подчинённых, если нужно
-        if relation_field:
-            query = f"""
-                UPDATE users_managers
-                SET {relation_field}=%s
-                WHERE {relation_field}=%s
-            """
-            await db.execute(query, (new_phone, old_phone))
+    # --- 2. Проверяем роль пользователя ---
+    if role == "директор":
+        # Обновляем имя директора и телефон только у руководителей
+        if new_name and new_name != old_name:
+            await db.execute(
+                "UPDATE users_managers u JOIN roles r ON LOWER(u.role) = LOWER(r.value) SET u.director=%s WHERE u.director=%s AND r.is_manager = 1",
+                (new_name, old_name),
+            )
+
+        if new_phone and new_phone != old_phone:
+            await db.execute(
+                """
+                UPDATE users_managers u
+                JOIN roles r ON u.role = r.value
+                SET u.phone_director = %s
+                WHERE u.phone_director = %s
+                AND r.is_manager = 1
+                """,
+                (new_phone, old_phone),
+            )
+
+    elif is_manager:
+        # Обновляем имя руководителя и телефон у сотрудников
+        if new_name and new_name != old_name:
+            await db.execute(
+                "UPDATE users_managers SET manager=%s WHERE manager=%s",
+                (new_name, old_name),
+            )
+
+        if new_phone and new_phone != old_phone:
+            await db.execute(
+                "UPDATE users_managers SET phone_manager=%s WHERE phone_manager=%s",
+                (new_phone, old_phone),
+            )
 
     # --- 3. Обновляем все остальные поля пользователя ---
     fields = []
@@ -199,6 +296,51 @@ async def change_employee(request: Request, user=Depends(telegram_user), db=Depe
         if key != "chat_ids":  # chat_ids обработаем отдельно
             fields.append(f"{key} = %s")
             values.append(value)
+
+    # --- ДО ОБНОВЛЕНИЯ проверяем, новая ли роль руководителя ---
+    new_role = data.get("role")
+    if new_role:
+        await db.execute("SELECT is_manager FROM roles WHERE value=%s", (new_role.lower(),))
+        role_row = await db.fetchone()
+        is_manager = bool(role_row['is_manager']) if role_row else False
+
+        if is_manager:
+            # Получаем директора для нового руководителя
+            await db.execute("SELECT full_name, phone FROM users_managers WHERE LOWER(role)='директор' AND status='approved' LIMIT 1")
+            director_row = await db.fetchone()
+            if director_row:
+                fields.append("director = %s")
+                values.append(director_row["full_name"])
+                fields.append("phone_director = %s")
+                values.append(director_row["phone"])
+
+            # Для руководителя его "менеджер" — это он сам
+            fields.append("manager = %s")
+            values.append(data.get("full_name"))  # или updated full_name
+            fields.append("phone_manager = %s")
+            values.append(data.get("phone"))      # или updated phone
+
+            # Добавляем должность в сводную таблицу users_dep
+            # Проверяем существующую связь
+            await db.execute("""
+                SELECT 1
+                FROM users_dep ud
+                JOIN department d ON ud.dep_id = d.id
+                WHERE ud.user_id=%s AND d.value=%s
+            """, (emp_id, new_role))
+            exists = await db.fetchone()
+            if not exists:
+                # Получаем id отдела по значению роли
+                await db.execute("SELECT id FROM department WHERE value=%s", (new_role,))
+                dep_row = await db.fetchone()
+                if dep_row:
+                    await db.execute(
+                        "INSERT INTO users_dep (user_id, dep_id) VALUES (%s, %s)",
+                        (emp_id, dep_row["id"])
+                    )
+
+            # Ставим NULL в колонку department основной таблицы
+            fields.append("department = NULL")
 
     if fields:
         query = f"UPDATE users_managers SET {', '.join(fields)} WHERE id = %s"
@@ -271,6 +413,7 @@ async def change_employee(request: Request, user=Depends(telegram_user), db=Depe
             for chat in removed_chats:
                 try:
                     await notify_user_about_removal(tg_id, chat["value"])
+                    await remove_user_from_chat(chat["group_id"], tg_id)
                 except Exception as e:
                     print(f"⚠ Не удалось уведомить {tg_id} об удалении из {chat['value']}: {e}")
 
@@ -312,6 +455,21 @@ async def change_employee(request: Request, user=Depends(telegram_user), db=Depe
     user_birth_date = user_row.get("birth_date") if user_row else ""
     user_department = user_row.get("department") if user_row else ""
 
+    # --- Получаем названия отделов ---
+    # --- Преобразуем ID отделов в их значения ---
+    # Берём department из запроса (data), а не из базы
+    # Получаем названия отделов пользователя из таблицы users_dep
+    await db.execute("""
+        SELECT d.value
+        FROM users_dep ud
+        JOIN department d ON ud.dep_id = d.id
+        WHERE ud.user_id = %s
+    """, (emp_id,))
+    dep_rows = await db.fetchall()
+    dep_values = [row["value"] for row in dep_rows] if dep_rows else []
+
+    departments_str = ", ".join(dep_values) if dep_values else "нет"
+
     # Получаем список чатов пользователя
     await db.execute("""
         SELECT c.value AS chat_name
@@ -328,8 +486,12 @@ async def change_employee(request: Request, user=Depends(telegram_user), db=Depe
     if user_tg_id:
         recipients.add(user_tg_id)
 
+    await db.execute("SELECT is_manager FROM roles WHERE value=%s", (user_role.lower(),))
+    role_manager = await db.fetchone()
+    is_manager = bool(role_manager['is_manager']) if role_manager else False
+
     # 2. Если пользователь не руководитель, уведомляем его менеджера
-    if user_role and user_role.lower() != "руководитель" and user_manager_phone:
+    if user_role and not is_manager and user_manager_phone:
         await db.execute("SELECT tg_id FROM users_managers WHERE phone=%s", (user_manager_phone,))
         mgr_row = await db.fetchone()
         if mgr_row and mgr_row.get("tg_id"):
@@ -351,7 +513,7 @@ async def change_employee(request: Request, user=Depends(telegram_user), db=Depe
                 phone=user_phone,
                 birth_date=user_birth_date,
                 role=user_role,
-                department=user_department,
+                department=departments_str,
                 chats=chat_names
             )
             print(f"Уведомление отправлено {tg_id}")
@@ -420,8 +582,38 @@ async def delete_user(request: Request, user=Depends(telegram_user), db=Depends(
             except Exception as e:
                 print(f"❌ Ошибка удаления {tg_id} из чата {group_id}: {e}")
 
+
+    # Если пользователь не руководитель и не директор — уведомляем его руководителя
+    # Проверяем, что роль не руководящая и не директор
+    await db.execute("SELECT is_manager FROM roles WHERE LOWER(value)=%s", (role.lower(),))
+    role_info = await db.fetchone()
+    is_manager = bool(role_info['is_manager']) if role_info and 'is_manager' in role_info else False
+
+    if not is_manager and role.lower() != 'директор' and user_row.get("phone_manager"):
+        # Ищем руководителя по телефону
+        await db.execute("""
+            SELECT um.tg_id, um.full_name 
+            FROM users_managers um
+            JOIN roles r ON um.role = r.value
+            WHERE um.phone = %s 
+            AND r.is_manager = 1 
+            AND um.tg_id IS NOT NULL
+        """, (user_row["phone_manager"],))
+        manager_row = await db.fetchone()
+        if manager_row:
+            try:
+                await notify_manager_fired(
+                    manager_row["tg_id"],
+                    full_name,   # имя уволенного сотрудника
+                    role,
+                    department
+                )
+                print(f"Руководитель {manager_row['full_name']} уведомлен об увольнении {full_name}")
+            except Exception as e:
+                print(f"Не удалось уведомить руководителя {manager_row['full_name']}: {e}")
+
         # --- Получаем всех директоров и уведомляем ---
-    await db.execute("SELECT tg_id, full_name, department, role FROM users_managers WHERE role='директор' AND tg_id IS NOT NULL")
+    await db.execute("SELECT tg_id, full_name, department, role FROM users_managers WHERE LOWER(role) IN ('директор', 'admin') AND tg_id IS NOT NULL")
     directors = await db.fetchall()
     for director in directors:
         try:

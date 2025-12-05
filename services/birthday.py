@@ -1,23 +1,14 @@
-import json
+# backend/services/birthday.py
 import os
-from fastapi import Depends
-from datetime import date, datetime
+import json
+from datetime import date
+from config import BIRTHDAY_CHAT_ID
 from db.db import get_db_conn
-import asyncio
 
-# Путь к JSON-файлу лога
 LOG_FILE = os.path.join(os.getcwd(), "birthday_log.json")
 
-# Шаблоны поздравлений
-MALE_TEMPLATES = [
-    "С днем рождения, @{username}! 🎉 Желаю успехов и счастья!",
-    "Поздравляю тебя, @{username}! Пусть день будет супер!"
-]
-
-FEMALE_TEMPLATES = [
-    "С днем рождения, @{username}! 🎀 Пусть сбудутся все мечты!",
-    "Поздравляю, @{username}! Пусть день будет волшебным!"
-]
+FEMALE_TEMPLATE = "Дорогая {full_name}! Поздравляем с Вашим днём рождения! Желаем солнечного настроения, лёгкости на поворотах жизни и чтобы все цели достигались на автопилоте. Будьте счастливы!"
+MALE_TEMPLATE = "Уважаемый {full_name}! Поздравляем с Вашим днём рождения! Желаем солнечного настроения, лёгкости на поворотах жизни и чтобы все цели достигались на автопилоте. Будьте счастливы!"
 
 # --- Работа с JSON логом ---
 def load_log():
@@ -33,7 +24,7 @@ def save_log(log_data):
     with open(LOG_FILE, "w", encoding="utf-8") as f:
         json.dump(log_data, f, ensure_ascii=False, indent=4)
 
-def add_to_log(user_id):
+def add_to_log(user_id: int):
     today_str = date.today().isoformat()
     log = load_log()
     log.setdefault(today_str, [])
@@ -41,15 +32,14 @@ def add_to_log(user_id):
         log[today_str].append(user_id)
     save_log(log)
 
-def has_been_congratulated(user_id):
+def has_been_congratulated(user_id: int) -> bool:
     today_str = date.today().isoformat()
     log = load_log()
     return today_str in log and user_id in log[today_str]
 
-# --- Авто-очистка 31 декабря ---
 def clear_log_if_new_year():
     today = date.today()
-    if today.month == 12 and today.day == 31:
+    if today.month == 23 and today.day == 56:
         save_log({})
 
 # --- Основная функция ---
@@ -57,27 +47,65 @@ async def send_birthday_congratulations(bot):
     clear_log_if_new_year()
     today_str = date.today().strftime("%m-%d")
 
-    # Получаем курсор из пула
-    async for cur in get_db_conn():  # перебор асинхронного генератора
+    # Определяем чат для поздравлений
+    birthday_chat_id = BIRTHDAY_CHAT_ID
+    async for conn in get_db_conn():
+        await conn.execute("SELECT group_id FROM chats WHERE value=%s", ("ДЦ Чанган Поздравления",))
+        chat_row = await conn.fetchone()
+        if chat_row:
+            birthday_chat_id = chat_row["group_id"]
+
+    # Получаем пользователей с ДР сегодня
+    async for cur in get_db_conn():
         await cur.execute(
-            "SELECT id, tg_id, username, gender FROM users_managers WHERE DATE_FORMAT(birth_date, '%%m-%%d') = %s",
+            "SELECT tg_id, full_name, gender FROM users_managers WHERE DATE_FORMAT(birth_date, '%%m-%%d') = %s",
             (today_str,)
         )
         users = await cur.fetchall()
 
+        messages = []
         for user in users:
             user_id = user["tg_id"]
-            username = user.get("username") or ""
+            full_name = user.get("full_name") or "коллега"
             gender = user.get("gender") or "man"
 
             if has_been_congratulated(user_id):
                 continue
 
-            template = FEMALE_TEMPLATES[0] if gender.lower() == "woman" else MALE_TEMPLATES[0]
-            message = template.replace("@{username}", f"@{username}" if username else "")
+            # Выбор шаблона по полу
+            if gender.lower() == "woman":
+                message_text = FEMALE_TEMPLATE.format(full_name=full_name)
+            else:
+                message_text = MALE_TEMPLATE.format(full_name=full_name)
 
             try:
-                await bot.send_message(user_id, message)
+                await bot.send_message(chat_id=birthday_chat_id, text=message_text)
+                print(f"✅ Отправлено поздравление {full_name} в чат {birthday_chat_id}")
                 add_to_log(user_id)
             except Exception as e:
-                print(f"Ошибка при отправке поздравления {user_id}: {e}")
+                print(f"⚠ Ошибка при отправке поздравления {full_name}: {e}")
+        # for user in users:
+        #     user_id = user["tg_id"]
+        #     full_name = user.get("full_name") or "коллега"
+        #     gender = user.get("gender") or "man"
+
+        #     if has_been_congratulated(user_id):
+        #         continue
+
+        #     # Выбор шаблона по полу
+        #     if gender.lower() == "woman":
+        #         message_text = FEMALE_TEMPLATE.format(full_name=full_name)
+        #     else:
+        #         message_text = MALE_TEMPLATE.format(full_name=full_name)
+
+        #     messages.append(message_text)
+        #     add_to_log(user_id)
+
+        # # Отправляем сообщение в чат
+        # if messages:
+        #     full_text = "\n".join(messages)
+        #     try:
+        #         await bot.send_message(chat_id=birthday_chat_id, text=full_text)
+        #         print(f"✅ Отправлено поздравление в чат {birthday_chat_id}")
+        #     except Exception as e:
+        #         print(f"⚠ Ошибка при отправке поздравления в чат {birthday_chat_id}: {e}")
